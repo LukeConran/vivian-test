@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bloom</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --dusk-top: #2a2f5a;
+    --dusk-bottom: #6b4e78;
+    --mist: #ece8f4;
+    --pollen: #f5c84c;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { height: 100%; overflow: hidden; }
+  body {
+    background: linear-gradient(180deg, var(--dusk-top) 0%, var(--dusk-bottom) 100%);
+    color: var(--mist);
+    font-family: "Fraunces", Georgia, "Times New Roman", serif;
+    cursor: crosshair;
+  }
+  canvas { position: fixed; inset: 0; display: block; }
+  header {
+    position: fixed; top: clamp(1.5rem, 5vw, 3rem); left: clamp(1.5rem, 5vw, 3rem);
+    max-width: 32ch; pointer-events: none;
+  }
+  h1 { font-weight: 300; font-size: clamp(3.5rem, 12vw, 8rem); line-height: 0.9; letter-spacing: -0.03em; }
+  p { margin-top: 1rem; font-size: 1.05rem; line-height: 1.5; opacity: 0.85; }
+  button {
+    position: fixed; bottom: clamp(1rem, 4vw, 2rem); right: clamp(1rem, 4vw, 2rem);
+    font: 600 0.95rem "Fraunces", Georgia, serif; color: var(--dusk-top);
+    background: var(--mist); border: 0; border-radius: 999px; padding: 0.6rem 1.2rem; cursor: pointer;
+  }
+  button:focus-visible { outline: 3px solid var(--pollen); outline-offset: 3px; }
+</style>
+</head>
+<body>
+<canvas id="garden" aria-label="A garden where flowers bloom where you click"></canvas>
+<header>
+  <h1>Bloom</h1>
+  <p>Click anywhere to plant a flower. Press Space to plant one at random.</p>
+</header>
+<button id="clear">Clear garden</button>
+
+<script>
+  const canvas = document.getElementById("garden");
+  const ctx = canvas.getContext("2d");
+  const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const palettes = [
+    ["#f2a6b8", "#e07a95"],
+    ["#f6d1a8", "#e9a46a"],
+    ["#c9b6f2", "#9a7fe0"],
+    ["#f7f2e8", "#d9cdb8"],
+  ];
+  let W, H;
+  let flowers = [];
+
+  function resize() {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    W = innerWidth; H = innerHeight;
+    canvas.width = W * dpr; canvas.height = H * dpr;
+    canvas.style.width = W + "px"; canvas.style.height = H + "px";
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  function plant(x, y) {
+    if (flowers.length > 60) flowers.shift();
+    flowers.push({
+      x, y: Math.max(y, H * 0.15),
+      sway: (Math.random() - 0.5) * 60,
+      petals: 5 + Math.floor(Math.random() * 4),
+      size: 18 + Math.random() * 22,
+      rot: Math.random() * Math.PI,
+      colors: palettes[Math.floor(Math.random() * palettes.length)],
+      t: reduceMotion ? 1 : 0,
+    });
+  }
+
+  const ease = t => 1 - Math.pow(1 - t, 3);
+
+  function drawFlower(f) {
+    const grow = ease(Math.min(f.t / 0.5, 1));        // first half: stem grows
+    const bloom = ease(Math.max(0, (f.t - 0.5) / 0.5)); // second half: petals open
+    const topX = f.x + f.sway * grow;
+    const topY = H - (H - f.y) * grow;
+
+    ctx.strokeStyle = "#7fa871"; ctx.lineWidth = 3; ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(f.x, H);
+    ctx.quadraticCurveTo(f.x, (H + topY) / 2, topX, topY);
+    ctx.stroke();
+    if (bloom <= 0) return;
+
+    const s = f.size * bloom;
+    ctx.save();
+    ctx.translate(topX, topY);
+    ctx.rotate(f.rot + bloom * 0.4);
+    for (let i = 0; i < f.petals; i++) {
+      ctx.rotate((Math.PI * 2) / f.petals);
+      ctx.beginPath();
+      ctx.ellipse(0, -s * 0.6, s * 0.38, s * 0.62, 0, 0, Math.PI * 2);
+      ctx.fillStyle = f.colors[i % 2];
+      ctx.fill();
+    }
+    ctx.beginPath();
+    ctx.arc(0, 0, s * 0.22, 0, Math.PI * 2);
+    ctx.fillStyle = "#f5c84c";
+    ctx.fill();
+    ctx.restore();
+  }
+
+  let last = performance.now();
+  function frame(now) {
+    const dt = Math.min((now - last) / 1000, 0.05);
+    last = now;
+    ctx.clearRect(0, 0, W, H);
+    for (const f of flowers) {
+      if (f.t < 1) f.t = Math.min(1, f.t + dt / 2.2);
+      drawFlower(f);
+    }
+    requestAnimationFrame(frame);
+  }
+
+  addEventListener("resize", resize);
+  canvas.addEventListener("pointerdown", e => plant(e.clientX, e.clientY));
+  addEventListener("keydown", e => {
+    if (e.code === "Space") { e.preventDefault(); plant(Math.random() * W, H * (0.25 + Math.random() * 0.5)); }
+  });
+  document.getElementById("clear").addEventListener("click", () => { flowers = []; });
+
+  resize();
+  plant(W * 0.62, H * 0.42);
+  requestAnimationFrame(frame);
+</script>
+</body>
+</html>
